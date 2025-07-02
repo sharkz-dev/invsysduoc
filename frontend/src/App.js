@@ -5,8 +5,20 @@ import './App.css';
 const API_URL = 'http://localhost:5000/api';
 
 const categorias = [
-  'General', 'Electrónicos', 'Ropa', 'Hogar', 'Deportes', 'Libros', 'Salud', 'Automóvil', 'Otros'
+  'Repuestos Generales',
+  'Motor y Transmisión',
+  'Sistema Hidráulico',
+  'Frenos y Suspensión',
+  'Eléctrico y Electrónico',
+  'Filtros y Lubricantes',
+  'Neumáticos y Llantas',
+  'Estructura y Chasis',
+  'Herramientas y Accesorios',
+  'Componentes de Seguridad'
 ];
+
+const unidadesMedida = ['Unidad', 'Metro', 'Litro', 'Kilogramo', 'Juego', 'Par', 'Rollo', 'Caja'];
+const estadosProducto = ['Activo', 'Descontinuado', 'En Evaluación'];
 
 function App() {
   const [products, setProducts] = useState([]);
@@ -16,27 +28,41 @@ function App() {
   const [editingProduct, setEditingProduct] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [stats, setStats] = useState(null);
+  const [showStockBajo, setShowStockBajo] = useState(false);
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
     descripcion: '',
-    precio: '',
     stock: '',
-    categoria: 'General'
+    categoria: 'Repuestos Generales',
+    ubicacion: '',
+    stockMinimo: '',
+    proveedor: '',
+    equipoCompatible: '',
+    unidadMedida: 'Unidad',
+    observaciones: '',
+    estado: 'Activo'
   });
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
 
-  // Cargar productos al iniciar
+  // Cargar productos y estadísticas al iniciar
   useEffect(() => {
     fetchProducts();
+    fetchStats();
   }, []);
 
   const fetchProducts = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/products`);
-      setProducts(response.data);
+      const params = new URLSearchParams();
+      if (selectedCategory) params.append('categoria', selectedCategory);
+      if (searchTerm) params.append('search', searchTerm);
+      if (showStockBajo) params.append('stockBajo', 'true');
+      
+      const response = await axios.get(`${API_URL}/products?${params}`);
+      setProducts(response.data.productos || response.data);
       setError('');
     } catch (err) {
       setError('Error al cargar los productos');
@@ -45,6 +71,20 @@ function App() {
       setLoading(false);
     }
   };
+
+  const fetchStats = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/stats`);
+      setStats(response.data);
+    } catch (err) {
+      console.error('Error al cargar estadísticas:', err);
+    }
+  };
+
+  // Actualizar lista cuando cambien los filtros
+  useEffect(() => {
+    fetchProducts();
+  }, [selectedCategory, searchTerm, showStockBajo]);
 
   const handleInputChange = (e) => {
     setFormData({
@@ -72,9 +112,15 @@ function App() {
       formDataToSend.append('codigo', formData.codigo);
       formDataToSend.append('nombre', formData.nombre);
       formDataToSend.append('descripcion', formData.descripcion);
-      formDataToSend.append('precio', formData.precio);
       formDataToSend.append('stock', formData.stock);
       formDataToSend.append('categoria', formData.categoria);
+      formDataToSend.append('ubicacion', formData.ubicacion);
+      formDataToSend.append('stockMinimo', formData.stockMinimo);
+      formDataToSend.append('proveedor', formData.proveedor);
+      formDataToSend.append('equipoCompatible', formData.equipoCompatible);
+      formDataToSend.append('unidadMedida', formData.unidadMedida);
+      formDataToSend.append('observaciones', formData.observaciones);
+      formDataToSend.append('estado', formData.estado);
       
       if (imageFile) {
         formDataToSend.append('imagen', imageFile);
@@ -95,6 +141,7 @@ function App() {
       }
       
       fetchProducts();
+      fetchStats();
       resetForm();
       setShowModal(false);
       setError('');
@@ -109,9 +156,15 @@ function App() {
       codigo: product.codigo,
       nombre: product.nombre,
       descripcion: product.descripcion,
-      precio: product.precio.toString(),
       stock: product.stock.toString(),
-      categoria: product.categoria || 'General'
+      categoria: product.categoria || 'Repuestos Generales',
+      ubicacion: product.ubicacion || '',
+      stockMinimo: product.stockMinimo?.toString() || '1',
+      proveedor: product.proveedor || '',
+      equipoCompatible: product.equipoCompatible?.join(', ') || '',
+      unidadMedida: product.unidadMedida || 'Unidad',
+      observaciones: product.observaciones || '',
+      estado: product.estado || 'Activo'
     });
     if (product.imagen) {
       setImagePreview(`http://localhost:5000/uploads/${product.imagen}`);
@@ -124,6 +177,7 @@ function App() {
       try {
         await axios.delete(`${API_URL}/products/${id}`);
         fetchProducts();
+        fetchStats();
         setError('');
       } catch (err) {
         setError(err.response?.data?.message || 'Error al eliminar el producto');
@@ -136,9 +190,15 @@ function App() {
       codigo: '',
       nombre: '',
       descripcion: '',
-      precio: '',
       stock: '',
-      categoria: 'General'
+      categoria: 'Repuestos Generales',
+      ubicacion: '',
+      stockMinimo: '',
+      proveedor: '',
+      equipoCompatible: '',
+      unidadMedida: 'Unidad',
+      observaciones: '',
+      estado: 'Activo'
     });
     setEditingProduct(null);
     setImageFile(null);
@@ -160,25 +220,35 @@ function App() {
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          product.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         product.descripcion.toLowerCase().includes(searchTerm.toLowerCase());
+                         product.descripcion.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (product.equipoCompatible && product.equipoCompatible.some(equipo => 
+                           equipo.toLowerCase().includes(searchTerm.toLowerCase())
+                         ));
     const matchesCategory = selectedCategory === '' || product.categoria === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesStockBajo = !showStockBajo || (product.stock <= product.stockMinimo);
+    return matchesSearch && matchesCategory && matchesStockBajo;
   });
 
-  // Estadísticas
+  // Estadísticas calculadas
   const totalProducts = products.length;
-  const lowStockProducts = products.filter(p => p.stock <= 5).length;
-  const totalValue = products.reduce((sum, p) => sum + (p.precio * p.stock), 0);
+  const lowStockProducts = products.filter(p => p.stock <= (p.stockMinimo || 1)).length;
+  const totalStock = products.reduce((sum, p) => sum + p.stock, 0);
 
   return (
     <div className="app">
       <header className="header">
         <div className="container">
           <div className="header-content">
-            <h1>Sistema de Inventarios</h1>
+            <div className="company-info">
+              <h1>🏭 Maestranzas Unidos S.A.</h1>
+              <p>Sistema de Inventario - Equipos Pesados | Región de Atacama</p>
+            </div>
             <div className="header-actions">
-              <button className="btn btn-primary" onClick={openModal}>
-                + Agregar Producto
+              <button 
+                className="btn btn-primary"
+                onClick={openModal}
+              >
+                ➕ Agregar Producto
               </button>
             </div>
           </div>
@@ -187,20 +257,20 @@ function App() {
 
       <div className="stats-bar">
         <div className="container">
-          <div className="stats-grid">
+          <div className="stats">
             <div className="stat-card">
               <div className="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4m-8 0V9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-8 0h8"/>
+                  <path d="M20 7h-9V5a3 3 0 0 0-6 0v2H3l2 13h14l2-13z"/>
                 </svg>
               </div>
               <div className="stat-info">
-                <div className="stat-number">{totalProducts}</div>
+                <div className="stat-number">{totalProducts.toLocaleString()}</div>
                 <div className="stat-label">Total Productos</div>
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon">
+              <div className="stat-icon warning">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                   <line x1="12" y1="9" x2="12" y2="13"/>
@@ -208,20 +278,21 @@ function App() {
                 </svg>
               </div>
               <div className="stat-info">
-                <div className="stat-number">{lowStockProducts}</div>
+                <div className="stat-number">{lowStockProducts.toLocaleString()}</div>
                 <div className="stat-label">Stock Bajo</div>
               </div>
             </div>
             <div className="stat-card">
               <div className="stat-icon">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="12" y1="1" x2="12" y2="23"/>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                  <line x1="8" y1="21" x2="16" y2="21"/>
+                  <line x1="12" y1="17" x2="12" y2="21"/>
                 </svg>
               </div>
               <div className="stat-info">
-                <div className="stat-number">${totalValue.toLocaleString()}</div>
-                <div className="stat-label">Valor Total</div>
+                <div className="stat-number">{totalStock.toLocaleString()}</div>
+                <div className="stat-label">Total Stock</div>
               </div>
             </div>
           </div>
@@ -234,23 +305,35 @@ function App() {
             <div className="search-bar">
               <input
                 type="text"
-                placeholder="Buscar productos..."
+                placeholder="🔍 Buscar por código, nombre, descripción o equipo compatible..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="search-input"
               />
             </div>
-            <div className="category-filter">
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="category-select"
-              >
-                <option value="">Todas las categorías</option>
-                {categorias.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+            <div className="filters-row">
+              <div className="category-filter">
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="category-select"
+                >
+                  <option value="">📂 Todas las categorías</option>
+                  {categorias.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="stock-filter">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={showStockBajo}
+                    onChange={(e) => setShowStockBajo(e.target.checked)}
+                  />
+                  ⚠️ Solo stock bajo
+                </label>
+              </div>
             </div>
           </div>
 
@@ -263,7 +346,7 @@ function App() {
           {loading ? (
             <div className="loading">
               <div className="spinner"></div>
-              <p>Cargando productos...</p>
+              <p>Cargando inventario...</p>
             </div>
           ) : (
             <div className="products-grid">
@@ -276,7 +359,7 @@ function App() {
                   </div>
                   <h3>No hay productos</h3>
                   <p>
-                    {searchTerm || selectedCategory 
+                    {searchTerm || selectedCategory || showStockBajo
                       ? 'No se encontraron productos con los filtros aplicados'
                       : 'Agrega tu primer producto para comenzar'
                     }
@@ -284,69 +367,86 @@ function App() {
                 </div>
               ) : (
                 filteredProducts.map(product => (
-                  <div key={product._id} className="product-card">
+                  <div key={product._id} className={`product-card ${product.stock <= (product.stockMinimo || 1) ? 'low-stock' : ''}`}>
                     <div className="product-image">
                       {product.imagen ? (
                         <img 
                           src={`http://localhost:5000/uploads/${product.imagen}`} 
                           alt={product.nombre}
                           onError={(e) => {
+                            // Si falla la imagen local, mostrar placeholder
                             e.target.style.display = 'none';
                             e.target.nextElementSibling.style.display = 'flex';
                           }}
                         />
                       ) : null}
-                      <div className="placeholder-image" style={{display: product.imagen ? 'none' : 'flex'}}>
+                      <div 
+                        className="placeholder-image" 
+                        style={{display: product.imagen ? 'none' : 'flex'}}
+                      >
                         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                           <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                           <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21,15 16,10 5,21"/>
+                          <path d="M21 15l-5-5L5 21"/>
                         </svg>
+                        <p>Sin imagen</p>
                       </div>
                       <div className="product-actions">
-                        <button 
+                        <button
                           className="btn-icon btn-edit"
                           onClick={() => handleEdit(product)}
-                          title="Editar"
+                          title="Editar producto"
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
+                          ✏️
                         </button>
-                        <button 
+                        <button
                           className="btn-icon btn-delete"
                           onClick={() => handleDelete(product._id)}
-                          title="Eliminar"
+                          title="Eliminar producto"
                         >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3,6 5,6 21,6"/>
-                            <path d="M19,6v14a2,2,0,0,1-2,2H7a2,2,0,0,1-2-2V6m3,0V4a2,2,0,0,1,2-2h4a2,2,0,0,1,2,2V6"/>
-                          </svg>
+                          🗑️
                         </button>
                       </div>
                     </div>
-                    
                     <div className="product-content">
                       <div className="product-header">
                         <span className="product-code">{product.codigo}</span>
-                        <span className="product-category">{product.categoria}</span>
+                        <span className={`product-status ${product.estado?.toLowerCase().replace(' ', '-')}`}>
+                          {product.estado || 'Activo'}
+                        </span>
                       </div>
-                      
                       <h3 className="product-name">{product.nombre}</h3>
                       <p className="product-description">{product.descripcion}</p>
                       
                       <div className="product-details">
-                        <div className="detail-item">
-                          <span className="label">Precio:</span>
-                          <span className="value price">${product.precio.toLocaleString()}</span>
-                        </div>
-                        <div className="detail-item">
-                          <span className="label">Stock:</span>
-                          <span className={`value stock ${product.stock <= 5 ? 'low-stock' : ''}`}>
-                            {product.stock} unidades
+                        <div className="detail-row">
+                          <span className="detail-label">📦 Stock:</span>
+                          <span className={`detail-value ${product.stock <= (product.stockMinimo || 1) ? 'low-stock-text' : ''}`}>
+                            {product.stock} {product.unidadMedida || 'Unidad'}
+                            {product.stock <= (product.stockMinimo || 1) && ' ⚠️'}
                           </span>
                         </div>
+                        <div className="detail-row">
+                          <span className="detail-label">📍 Ubicación:</span>
+                          <span className="detail-value">{product.ubicacion || 'Sin asignar'}</span>
+                        </div>
+                        <div className="detail-row">
+                          <span className="detail-label">🏪 Proveedor:</span>
+                          <span className="detail-value">{product.proveedor || 'Sin asignar'}</span>
+                        </div>
+                        {product.equipoCompatible && product.equipoCompatible.length > 0 && (
+                          <div className="detail-row">
+                            <span className="detail-label">🚛 Equipos:</span>
+                            <span className="detail-value">{product.equipoCompatible.join(', ')}</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="product-footer">
+                        <span className="product-category">{product.categoria}</span>
+                        {product.observaciones && (
+                          <span className="product-notes" title={product.observaciones}>📝</span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -357,154 +457,187 @@ function App() {
         </div>
       </main>
 
-      {/* Modal */}
+      {/* Modal para agregar/editar producto */}
       {showModal && (
-        <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal">
             <div className="modal-header">
-              <h2>{editingProduct ? 'Editar Producto' : 'Agregar Producto'}</h2>
-              <button className="btn-close" onClick={closeModal}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="6" x2="6" y2="18"/>
-                  <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+              <h2>{editingProduct ? 'Editar Producto' : 'Agregar Nuevo Producto'}</h2>
+              <button className="close-btn" onClick={closeModal}>✕</button>
             </div>
             
-            <form onSubmit={handleSubmit} className="modal-body">
-              <div className="form-section">
-                <h3>Información Básica</h3>
-                
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Código del Producto *</label>
-                    <input
-                      type="text"
-                      name="codigo"
-                      value={formData.codigo}
-                      onChange={handleInputChange}
-                      required
-                      placeholder="Ej: PROD001"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Categoría *</label>
-                    <select
-                      name="categoria"
-                      value={formData.categoria}
-                      onChange={handleInputChange}
-                      required
-                    >
-                      {categorias.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
+            <form onSubmit={handleSubmit} className="modal-form">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Código *</label>
+                  <input
+                    type="text"
+                    name="codigo"
+                    value={formData.codigo}
+                    onChange={handleInputChange}
+                    required
+                    placeholder="Ej: MT-001"
+                  />
                 </div>
 
                 <div className="form-group">
-                  <label>Nombre del Producto *</label>
+                  <label>Categoría *</label>
+                  <select
+                    name="categoria"
+                    value={formData.categoria}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    {categorias.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Nombre *</label>
                   <input
                     type="text"
                     name="nombre"
                     value={formData.nombre}
                     onChange={handleInputChange}
                     required
-                    placeholder="Ej: Laptop Dell Inspiron"
+                    placeholder="Nombre del producto"
                   />
                 </div>
 
-                <div className="form-group">
+                <div className="form-group full-width">
                   <label>Descripción *</label>
                   <textarea
                     name="descripcion"
                     value={formData.descripcion}
                     onChange={handleInputChange}
                     required
-                    placeholder="Descripción detallada del producto"
                     rows="3"
+                    placeholder="Descripción detallada del producto"
                   />
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Precio *</label>
-                    <input
-                      type="number"
-                      name="precio"
-                      value={formData.precio}
-                      onChange={handleInputChange}
-                      required
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Stock *</label>
-                    <input
-                      type="number"
-                      name="stock"
-                      value={formData.stock}
-                      onChange={handleInputChange}
-                      required
-                      min="0"
-                      placeholder="0"
-                    />
-                  </div>
+                <div className="form-group">
+                  <label>Stock Actual *</label>
+                  <input
+                    type="number"
+                    name="stock"
+                    value={formData.stock}
+                    onChange={handleInputChange}
+                    required
+                    min="0"
+                    placeholder="0"
+                  />
                 </div>
-              </div>
 
-              <div className="form-section">
-                <h3>Imagen del Producto</h3>
-                <div className="image-upload-section">
-                  <div className="image-preview">
-                    {imagePreview ? (
+                <div className="form-group">
+                  <label>Stock Mínimo *</label>
+                  <input
+                    type="number"
+                    name="stockMinimo"
+                    value={formData.stockMinimo}
+                    onChange={handleInputChange}
+                    required
+                    min="0"
+                    placeholder="1"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Ubicación en Bodega *</label>
+                  <input
+                    type="text"
+                    name="ubicacion"
+                    value={formData.ubicacion}
+                    onChange={handleInputChange}
+                    required
+                    placeholder="Ej: A-02-15"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Unidad de Medida *</label>
+                  <select
+                    name="unidadMedida"
+                    value={formData.unidadMedida}
+                    onChange={handleInputChange}
+                    required
+                  >
+                    {unidadesMedida.map(unidad => (
+                      <option key={unidad} value={unidad}>{unidad}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Proveedor</label>
+                  <input
+                    type="text"
+                    name="proveedor"
+                    value={formData.proveedor}
+                    onChange={handleInputChange}
+                    placeholder="Nombre del proveedor"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Estado</label>
+                  <select
+                    name="estado"
+                    value={formData.estado}
+                    onChange={handleInputChange}
+                  >
+                    {estadosProducto.map(estado => (
+                      <option key={estado} value={estado}>{estado}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Equipos Compatibles</label>
+                  <input
+                    type="text"
+                    name="equipoCompatible"
+                    value={formData.equipoCompatible}
+                    onChange={handleInputChange}
+                    placeholder="Separar con comas: Excavadora 390F, Camión 793F"
+                  />
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Observaciones</label>
+                  <textarea
+                    name="observaciones"
+                    value={formData.observaciones}
+                    onChange={handleInputChange}
+                    rows="2"
+                    placeholder="Notas adicionales sobre el producto"
+                  />
+                </div>
+
+                <div className="form-group full-width">
+                  <label>Imagen del Producto</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="file-input"
+                  />
+                  {imagePreview && (
+                    <div className="image-preview">
                       <img src={imagePreview} alt="Preview" />
-                    ) : (
-                      <div className="image-placeholder">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                          <circle cx="8.5" cy="8.5" r="1.5"/>
-                          <polyline points="21,15 16,10 5,21"/>
-                        </svg>
-                        <p>Sin imagen</p>
-                      </div>
-                    )}
-                  </div>
-                  <div className="image-upload-controls">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="file-input"
-                      id="image-upload"
-                    />
-                    <label htmlFor="image-upload" className="btn btn-secondary">
-                      Seleccionar Imagen
-                    </label>
-                    {imagePreview && (
-                      <button
-                        type="button"
-                        className="btn btn-danger"
-                        onClick={() => {
-                          setImageFile(null);
-                          setImagePreview(null);
-                        }}
-                      >
-                        Quitar
-                      </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="modal-footer">
+              <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={closeModal}>
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  {editingProduct ? 'Actualizar' : 'Guardar'}
+                  {editingProduct ? 'Actualizar' : 'Agregar'} Producto
                 </button>
               </div>
             </form>
